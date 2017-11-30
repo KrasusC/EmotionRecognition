@@ -34,8 +34,6 @@ Y = tf.placeholder("float", [batch_size, num_classes])
 
 # Define weights
 weights = {
-    # Hidden layer weights => 2*n_hidden because of forward + backward cells
-    'out': tf.Variable(tf.random_normal([2*num_hidden, num_classes])),
     # 12x16 conv, 3 input, 16 outputs
     'wconv1': tf.Variable(tf.random_normal([12, 16, 3, 16])),
     # 8x12 conv, 16 inputs, 24 outputs
@@ -45,10 +43,9 @@ weights = {
     # fully connected, 7*7*64 inputs, 1024 outputs
     'wfc1': tf.Variable(tf.random_normal([100, 128])),#TODO vector size tbd, the number should be conv3 + x1
     # 1024 inputs, 10 outputs (class prediction)
-    'classify': tf.Variable(tf.random_normal([128, num_classes]))
+    'classify': tf.Variable(tf.random_normal([2*num_hidden, num_classes]))
 }
 biases = {
-    'out': tf.Variable(tf.random_normal([num_classes])),
     'bconv1': tf.Variable(tf.random_normal([16])),
     'bconv2': tf.Variable(tf.random_normal([24])),
     'bconv3': tf.Variable(tf.random_normal([32])),
