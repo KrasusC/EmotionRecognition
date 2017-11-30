@@ -100,7 +100,7 @@ def BiRNN(x):
 def classifyNet(inputs):
     # Linear activation, using rnn inner loop last output
     logits =  tf.matmul(inputs[-1], weights['classify']) + biases['classify']
-    return = tf.nn.softmax(logits)
+    return tf.nn.softmax(logits)
 
 
 #Full NN architecture
