@@ -10,16 +10,17 @@ class DatasetTool(object):
         self.timesteps = timesteps
         dataset_list = []
         #read csv path
+
         for emotion in listdir(dataset_path):
-            for csvfile in listdir(emotion):
-                dataset_list.append(path.abspath(csvfile))
+            for csvfile in listdir(dataset_path + '/' + emotion):
+                dataset_list.append(dataset_path + '/' + emotion + '/' + csvfile)
         shuffle(dataset_list)
         csv_len = len(dataset_list)
 
         #split train and test set
         self.train_len = ceil(0.8 * csv_len)
         self.train_set = dataset_list[:self.train_len]
-        self.test_len = csv_len - train_len
+        self.test_len = csv_len - self.train_len
         self.test_set = dataset_list[self.train_len:]
 
         #calculate train and test batch number
@@ -53,7 +54,7 @@ class DatasetTool(object):
             return [0, 0, 0, 0, 0, 1]
         return -1
 
-    def next_train_batch(self):
+    def next_batch(self, is_train):
         '''
         return batch_x, batch_y
         batch_x = [[3s frame * Timestep] * batch_size]
@@ -68,17 +69,21 @@ class DatasetTool(object):
         '''
         #fetch current batch interval and move the pointer
         pointer_interval = self.batch_size // 3
-        batch_csv_list = self.train_set[self.train_batch_pointer : pointer_interval]
-        self.train_batch_pointer += pointer_interval
+        if is_train:
+            batch_csv_list = self.train_set[self.train_batch_pointer : pointer_interval]
+            self.train_batch_pointer += pointer_interval
+        else:
+            batch_csv_list = self.test_set[self.test_batch_pointer : pointer_interval]
+            self.test_batch_pointer += pointer_interval
 
         #fetch data
         logMel = []
         features = []
         ground_truth = []
         for csv_file_path in batch_csv_list:
-            ground_truth.extend(emotion_dict(csv_file_path) for _ in range(3))
-            with open(csv_file_path) as csv:
-                reader = csv.reader(csv, delimiter=';')
+            ground_truth.extend(self.emotion_dict(csv_file_path) for _ in range(3))
+            with open(csv_file_path) as csvf:
+                reader = csv.reader(csvf, delimiter=';')
                 rows = [_ for _ in reader]
                 logMel_rows = []
                 feature_rows = []
@@ -89,23 +94,22 @@ class DatasetTool(object):
                     feature_rows.append(temp)
                 #3*297 lines, parse matrix
                 for i in range(3):
-                    one_logMel = np.array()
-                    one_features = np.array()
                     mel_mat = np.array(logMel_rows[i * 297 + 1: (i + 1) * 297])
                     feature_mat = np.array(feature_rows[i * 297 + 1: (i + 1) * 297])
-                    logMel.append(np.log(mel_mat))
+                    logMel.append(mel_mat)
                     features.append(feature_mat)
 
         return np.array(logMel), np.array(features), np.array(ground_truth)
-        #return np.array([[np.zeros((400, 300, 3)) for __ in range(self.timesteps)] for _ in xrange(self.batch_size)]),\
-          #np.array([[np.zeros((20)) for __ in range(self.timesteps)] for _ in xrange(self.batch_size)]),\
-          #np.array([[1, 0, 0, 0, 0, 0] for _ in xrange(self.batch_size)])
 
-    def next_test_batch(self):
-        '''
-        return test_batch_x, test_batch_y
-        format is the same with next_train_batch
-        '''
-        return np.array([[np.zeros((400, 300, 3)) for __ in range(self.timesteps)] for _ in xrange(self.batch_size)]),\
-          np.array([[np.zeros((20)) for __ in range(self.timesteps)] for _ in xrange(self.batch_size)]),\
-          np.array([[1, 0, 0, 0, 0, 0] for _ in xrange(self.batch_size)])
+if __name__ == '__main__':
+    dataset = DatasetTool('/scratch/user/liqingqing/info_concatenated', 6, 296)
+    dataset.show_stat_info()
+    batch_mel, batch_feature, batch_truth = dataset.next_batch(is_train = True)
+    print('batch_mel_shape:', batch_mel.shape)
+    print('batch_feature_shape', batch_feature.shape)
+    print('batch_truth_shape', batch_truth.shape)
+    print('\n')
+    batch_mel, batch_feature, batch_truth = dataset.next_batch(is_train = False)
+    print('test_batch_mel_shape:', batch_mel.shape)
+    print('test_batch_feature_shape', batch_feature.shape)
+    print('test_batch_truth_shape', batch_truth.shape)
