@@ -1,2 +1,2 @@
-module load Anaconda/3-4.0.0
-source activate tensorflow
+module load Anaconda/3-5.0.0.1
+source activate tensorflow-gpu-1.3.0

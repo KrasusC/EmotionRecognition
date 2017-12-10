@@ -9,10 +9,8 @@ from DatasetTool import DatasetTool
 # Training Parameters
 learning_rate = 0.001
 training_epoch = 100
-training_steps = 10000
-testing_steps = 100
-batch_size = 6 # batch_size must be multiples of 3
-display_step = 1
+batch_size = 30 # batch_size must be multiples of 3
+display_step = 5
 dataset_config_file_path = '/scratch/user/liqingqing/info_concatenated'
 dropout_rate = 0.3
 
@@ -26,9 +24,10 @@ num_hidden = 128 # hidden layer num of features
 num_classes = 6 # total classes (0-9 digits)
 
 dataset = DatasetTool(dataset_config_file_path, batch_size, timesteps)
+training_steps, testing_steps = dataset.get_steps()
 
 # tf Graph input
-X = tf.placeholder("float", [batch_size, input_x, input_y, input_z])
+X = tf.placeholder("float", [batch_size, input_x, input_y])
 X_1 = tf.placeholder("float", [batch_size, timesteps, input_1])
 Y = tf.placeholder("float", [batch_size, num_classes])
 
@@ -80,7 +79,7 @@ def convNet(x, x1):
     print('conv3_shape:', conv3)
     conv3 = tf.reshape(conv3, shape=[batch_size, timesteps, -1])
     print('conv3_shape:', conv3)
-    conv3 = tf.concat(2, [conv3, x1])
+    conv3 = tf.concat([conv3, x1], 2)
     print('concatenated_conv3_shape:', conv3)
 
     #fc1 = tf.add(tf.matmul(conv3, weights['wfc1']), biases['bfc1'])
@@ -92,7 +91,7 @@ def convNet(x, x1):
 
 
 def BiRNN(x):
-    x = tf.unpack(x, timesteps, 1)
+    x = tf.unstack(x, timesteps, 1)
     #print('unpacked_lstm_input_shape:', x)
     # Define lstm cells with tensorflow
     # Forward direction cell
@@ -129,11 +128,18 @@ with tf.Session() as sess:
     # Run the initializer
     sess.run(init)
 
+    print('Exp Total Epoch:', training_epoch)
+    print('Exp Batch Size:', batch_size)
+    print('Exp Training Steps:', training_steps)
+    print('Exp Testing Steps:', testing_steps)
     for epoch_num in range(1, training_epoch + 1):
+        total_train_accuracy = 0
+        total_test_accuracy = 0
+        total_train_loss = 0
+        total_test_loss = 0
+
         for step in range(1, training_steps + 1):
             batch_x, batch_x_1, batch_y = dataset.next_batch(is_train = True)
-            #print(batch_x, batch_x_1, batch_y)
-            #print(batch_x_1.shape)
             sess.run(train_op, feed_dict={X: batch_x, X_1: batch_x_1, Y: batch_y})
             if step % display_step == 0 or step == 1:
                 # Calculate batch loss and accuracy
@@ -141,15 +147,28 @@ with tf.Session() as sess:
                 print("Training Step " + str(step) + ", Minibatch Loss= " + \
                       "{:.4f}".format(loss) + ", Training Accuracy= " + \
                       "{:.3f}".format(acc))
+                total_train_loss += loss
+                total_train_accuracy += acc
 
-        # if epoch_num % 5 == 0: #test every 5 epoch
-        #     for step in range(1, testing_steps + 1):
-        #         batch_x, batch_y = dataset.next_test_batch()
-        #         sess.run(train_op, feed_dict={X: batch_x, Y: batch_y})
-        #         if step % display_step == 0 or step == 1:
-        #             # Calculate batch loss and accuracy
-        #             loss, acc = sess.run([loss_op, accuracy], feed_dict={X: batch_x,
-        #                                                                  Y: batch_y})
-        #             print("Testing Step " + str(step) + ", Minibatch Loss= " + \
-        #                   "{:.4f}".format(loss) + ", Training Accuracy= " + \
-        #                   "{:.3f}".format(acc))
+        print("Training Epoch " + str(epoch_num) + ", Epoch Loss= " + \
+              "{:.4f}".format(total_train_loss / training_steps) + ", Epoch Training Accuracy= " + \
+              "{:.3f}".format(total_train_accuracy / training_steps))
+
+
+        if epoch_num % 5 == 0: #test every 5 epoch
+            for step in range(1, testing_steps + 1):
+                batch_x, batch_x_1, batch_y = dataset.next_batch(is_train = False)
+                sess.run(accuracy, feed_dict={X: batch_x, X_1: batch_x_1, Y: batch_y})
+                if step % display_step == 0 or step == 1:
+                    # Calculate batch loss and accuracy
+                    loss, acc = sess.run([loss_op, accuracy], feed_dict={X: batch_x,
+                                                                         Y: batch_y})
+                    print("Testing Step " + str(step) + ", Minibatch Loss= " + \
+                          "{:.4f}".format(loss) + ", Testing Accuracy= " + \
+                          "{:.3f}".format(acc))
+                    total_test_loss += loss
+                    total_test_accuracy += acc
+
+            print("Training Etep " + str(epoch_num) + ", Total Testing Loss= " + \
+                  "{:.4f}".format(total_test_loss / testing_steps) + ", Epoch Testing Accuracy= " + \
+                  "{:.3f}".format(total_test_accuracy / testing_steps))

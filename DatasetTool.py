@@ -39,6 +39,9 @@ class DatasetTool(object):
         print('test_batch_len:', self.test_batch_len)
         return
 
+    def get_steps(self):
+        return self.train_batch_len, self.test_batch_len
+
     def emotion_dict(self, abs_path):
         if 'anger' in abs_path:
             return [1, 0, 0, 0, 0, 0]
@@ -70,10 +73,10 @@ class DatasetTool(object):
         #fetch current batch interval and move the pointer
         pointer_interval = self.batch_size // 3
         if is_train:
-            batch_csv_list = self.train_set[self.train_batch_pointer : pointer_interval]
+            batch_csv_list = self.train_set[self.train_batch_pointer : self.train_batch_pointer + pointer_interval]
             self.train_batch_pointer += pointer_interval
         else:
-            batch_csv_list = self.test_set[self.test_batch_pointer : pointer_interval]
+            batch_csv_list = self.test_set[self.test_batch_pointer : self.test_batch_pointer + pointer_interval]
             self.test_batch_pointer += pointer_interval
 
         #fetch data
@@ -111,6 +114,12 @@ class DatasetTool(object):
 if __name__ == '__main__':
     dataset = DatasetTool('/scratch/user/liqingqing/info_concatenated', 3, 296)
     dataset.show_stat_info()
+    batch_mel, batch_feature, batch_truth = dataset.next_batch(is_train = True)
+    print('batch_mel_shape:', batch_mel.shape)
+    print('batch_feature_shape', batch_feature.shape)
+    print('batch_truth_shape', batch_truth.shape)
+    print('\n')
+    print('test next batch:\n')
     batch_mel, batch_feature, batch_truth = dataset.next_batch(is_train = True)
     print('batch_mel_shape:', batch_mel.shape)
     print('batch_feature_shape', batch_feature.shape)
