@@ -1,5 +1,3 @@
-from __future__ import print_function
-
 import tensorflow as tf
 from tensorflow.contrib import rnn
 import numpy as np
@@ -9,10 +7,10 @@ from DatasetTool import DatasetTool
 # Training Parameters
 learning_rate = 0.001
 training_epoch = 100
-batch_size = 30 # batch_size must be multiples of 3
-display_step = 5
+batch_size = 24 # batch_size must be multiples of 3
+display_step = 50
 dataset_config_file_path = '/scratch/user/liqingqing/info_concatenated'
-dropout_rate = 0.3
+dropout_rate = 0.2
 
 # Network Parameters
 input_x = 296
@@ -33,12 +31,23 @@ Y = tf.placeholder("float", [batch_size, num_classes])
 
 # Define weights
 weights = {
-    # 12x16 conv, 3 input, 16 outputs
+    # 12x6 conv, 3 input, 16 outputs
     'wconv1': tf.Variable(tf.random_normal([12, 6, 1, 16])),
-    # 8x12 conv, 16 inputs, 24 outputs
+    # 8x3 conv, 16 inputs, 24 outputs
     'wconv2': tf.Variable(tf.random_normal([8, 3, 16, 24])),
-    # 5x7 conv, 24 inputs, 32 outputs
+    # 5x2 conv, 24 inputs, 32 outputs
     'wconv3': tf.Variable(tf.random_normal([5, 2, 24, 32])),
+    #attention_cnn
+    #only one-dimmensional conv
+    'attwconv1': tf.Variable(tf.random_normal([5, 256, 5])),
+    #fc
+    'attwfc1': tf.Variable(tf.random_normal([40, 37])),
+    'attwfc2': tf.Variable(tf.random_normal([37, 37])),
+
+    'cwfc1': tf.Variable(tf.random_normal([256, 128])),
+    'cwfc2': tf.Variable(tf.random_normal([128, 32])),
+    'cwfc3': tf.Variable(tf.random_normal([32, num_classes])),
+
     # 1024 inputs, 10 outputs (class prediction)
     'classify': tf.Variable(tf.random_normal([2*num_hidden, num_classes]))
 }
@@ -46,6 +55,12 @@ biases = {
     'bconv1': tf.Variable(tf.random_normal([16])),
     'bconv2': tf.Variable(tf.random_normal([24])),
     'bconv3': tf.Variable(tf.random_normal([32])),
+    'attbconv1': tf.Variable(tf.random_normal([5])),
+    'attbfc1':   tf.Variable(tf.random_normal([37])),
+    'attbfc2':   tf.Variable(tf.random_normal([37])),
+    'cbfc1':   tf.Variable(tf.random_normal([128])),
+    'cbfc2':   tf.Variable(tf.random_normal([32])),
+    'cbfc3':   tf.Variable(tf.random_normal([num_classes])),
     'classify': tf.Variable(tf.random_normal([num_classes]))
 }
 
@@ -54,10 +69,15 @@ def conv2d(x, W, b, strides=1):
     x = tf.nn.bias_add(x, b)
     return tf.nn.relu(x)
 
+def conv1d(x, W, b, stride=5):
+    x = tf.nn.conv1d(x, W, stride, padding='SAME')
+    x = tf.nn.bias_add(x, b)
+    return tf.nn.relu(x)
+
 def maxpool2d(x, k=2):
     return tf.nn.max_pool(x, ksize=[1, k, k, 1], strides=[1, k, k, 1], padding='SAME')
 
-def convNet(x, x1):
+def convNN(x, x1):
     # Tensor input become 4-D: [Batch Size, Height, Width, Channel]
     x = tf.reshape(x, shape=[-1, input_x, input_y, input_z])
     # Convolution Layer
@@ -76,16 +96,11 @@ def convNet(x, x1):
 
     # Fully connected layer
     # Reshape conv2 output to fit fully connected layer input
-    print('conv3_shape:', conv3)
+    #print('conv3_shape:', conv3)
     conv3 = tf.reshape(conv3, shape=[batch_size, timesteps, -1])
-    print('conv3_shape:', conv3)
+    #print('conv3_shape:', conv3)
     conv3 = tf.concat([conv3, x1], 2)
-    print('concatenated_conv3_shape:', conv3)
-
-    #fc1 = tf.add(tf.matmul(conv3, weights['wfc1']), biases['bfc1'])
-    #fc1 = tf.nn.relu(fc1)
-    # Apply Dropout
-    #fc1 = tf.nn.dropout(fc1, dropout_rate)
+    #print('concatenated_conv3_shape:', conv3)
 
     return conv3
 
@@ -101,18 +116,62 @@ def BiRNN(x):
     # Get lstm cell output
     outputs, _, _ = rnn.static_bidirectional_rnn(lstm_fw_cell, lstm_bw_cell, x, dtype=tf.float32)
 
-    logits =  tf.matmul(outputs[-1], weights['classify']) + biases['classify']
-    return logits
+    #stack as [batch_size, timesteps, 2*num_hidden]
+    outputs = tf.stack(outputs, axis = 1)
+    print('stacked_x_shape:', outputs)
+    return outputs
+
+#generate [batch_size, timesteps] weights
+def AttentionNN(x):
+    conv1 = conv1d(x, weights['attwconv1'], biases['attbconv1'])
+
+    print('att_conv1_shape:', conv1)
+    conv1 = tf.reshape(conv1, shape=[batch_size, -1])
+
+    fc1 = tf.add(tf.matmul(conv1, weights['attwfc1']), biases['attbfc1'])
+    fc1 = tf.nn.relu(fc1)
+    fc1 = tf.nn.dropout(fc1, dropout_rate)
+
+    fc2 = tf.add(tf.matmul(fc1, weights['attwfc2']), biases['attbfc2'])
+    fc2 = tf.nn.relu(fc2)
+    fc2 = tf.nn.dropout(fc2, dropout_rate)
+
+    return fc2
+
+def ClassifyNN(x, a):
+    #add the [1] dimmension for broadcasting
+    a = tf.reshape(a, shape=[batch_size, timesteps, 1])
+    x = tf.multiply(x, a)
+
+    print('class_x_shape:', x)
+    x = tf.reduce_mean(x, 1)
+    print('class_x_mean_shape:', x)
+
+    fc1 = tf.add(tf.matmul(x, weights['cwfc1']), biases['cbfc1'])
+    fc1 = tf.nn.relu(fc1)
+    fc1 = tf.nn.dropout(fc1, dropout_rate)
+
+    fc2 = tf.add(tf.matmul(fc1, weights['cwfc2']), biases['cbfc2'])
+    fc2 = tf.nn.relu(fc2)
+    fc2 = tf.nn.dropout(fc2, dropout_rate)
+
+    fc3 = tf.add(tf.matmul(fc2, weights['cwfc3']), biases['cbfc3'])
+    fc3 = tf.nn.relu(fc3)
+    fc3 = tf.nn.dropout(fc3, dropout_rate)
+
+    return fc3
 
 #Full NN architecture
-outputs = convNet(X, X_1)
-
-logits = BiRNN(outputs)
-prediction = tf.nn.softmax(logits)
+outputs = convNN(X, X_1)
+lstm_output = BiRNN(outputs)
+attention_para = AttentionNN(lstm_output)
+logits = ClassifyNN(lstm_output, attention_para)
+#prediction = tf.nn.softmax(logits)
+prediction = tf.div(logits, tf.reshape(tf.reduce_sum(logits, 1), shape=[batch_size, 1]))
 
 # Define loss and optimizer
 loss_op = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=Y))
-optimizer = tf.train.GradientDescentOptimizer(learning_rate=learning_rate)
+optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
 train_op = optimizer.minimize(loss_op)
 
 # Evaluate model (with test logits, for dropout to be disabled)
@@ -137,10 +196,12 @@ with tf.Session() as sess:
         total_test_accuracy = 0
         total_train_loss = 0
         total_test_loss = 0
+        train_stat_cnt = 0
 
         for step in range(1, training_steps + 1):
             batch_x, batch_x_1, batch_y = dataset.next_batch(is_train = True)
             sess.run(train_op, feed_dict={X: batch_x, X_1: batch_x_1, Y: batch_y})
+
             if step % display_step == 0 or step == 1:
                 # Calculate batch loss and accuracy
                 loss, acc = sess.run([loss_op, accuracy], feed_dict={X: batch_x, X_1: batch_x_1, Y: batch_y})
@@ -149,26 +210,27 @@ with tf.Session() as sess:
                       "{:.3f}".format(acc))
                 total_train_loss += loss
                 total_train_accuracy += acc
+                train_stat_cnt += 1
 
         print("Training Epoch " + str(epoch_num) + ", Epoch Loss= " + \
-              "{:.4f}".format(total_train_loss / training_steps) + ", Epoch Training Accuracy= " + \
-              "{:.3f}".format(total_train_accuracy / training_steps))
+              "{:.4f}".format(total_train_loss / train_stat_cnt) + ", Epoch Training Accuracy= " + \
+              "{:.3f}".format(total_train_accuracy / train_stat_cnt))
 
 
         if epoch_num % 5 == 0: #test every 5 epoch
             for step in range(1, testing_steps + 1):
                 batch_x, batch_x_1, batch_y = dataset.next_batch(is_train = False)
-                sess.run(accuracy, feed_dict={X: batch_x, X_1: batch_x_1, Y: batch_y})
+                loss, acc = sess.run([loss_op, accuracy], feed_dict={X: batch_x, X_1: batch_x_1, Y: batch_y})
+
+                total_test_loss += loss
+                total_test_accuracy += acc
+
                 if step % display_step == 0 or step == 1:
-                    # Calculate batch loss and accuracy
-                    loss, acc = sess.run([loss_op, accuracy], feed_dict={X: batch_x,
-                                                                         Y: batch_y})
                     print("Testing Step " + str(step) + ", Minibatch Loss= " + \
                           "{:.4f}".format(loss) + ", Testing Accuracy= " + \
                           "{:.3f}".format(acc))
-                    total_test_loss += loss
-                    total_test_accuracy += acc
 
-            print("Training Etep " + str(epoch_num) + ", Total Testing Loss= " + \
+
+            print("Test of Training Epoch " + str(epoch_num) + ", Total Testing Loss= " + \
                   "{:.4f}".format(total_test_loss / testing_steps) + ", Epoch Testing Accuracy= " + \
                   "{:.3f}".format(total_test_accuracy / testing_steps))
