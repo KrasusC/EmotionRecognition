@@ -11,37 +11,35 @@ learning_rate = 0.001
 training_epoch = 100
 training_steps = 10000
 testing_steps = 100
-batch_size = 3 # batch_size must be multiples of 3
+batch_size = 6 # batch_size must be multiples of 3
 display_step = 1
-dataset_config_file_path = ''
+dataset_config_file_path = '/scratch/user/liqingqing/info_concatenated'
 dropout_rate = 0.3
 
 # Network Parameters
-input_x = 400
-input_y = 300
-input_z = 3
-input_1 = 20 # extra vector size example
-timesteps = 2 # timesteps
+input_x = 296
+input_y = 26
+input_z = 1
+input_1 = 4 # extra vector size example
+timesteps = 37 # timesteps = 296 / 8
 num_hidden = 128 # hidden layer num of features
 num_classes = 6 # total classes (0-9 digits)
 
 dataset = DatasetTool(dataset_config_file_path, batch_size, timesteps)
 
 # tf Graph input
-X = tf.placeholder("float", [batch_size, timesteps, input_x, input_y, input_z])
+X = tf.placeholder("float", [batch_size, input_x, input_y, input_z])
 X_1 = tf.placeholder("float", [batch_size, timesteps, input_1])
 Y = tf.placeholder("float", [batch_size, num_classes])
 
 # Define weights
 weights = {
     # 12x16 conv, 3 input, 16 outputs
-    'wconv1': tf.Variable(tf.random_normal([12, 16, 3, 16])),
+    'wconv1': tf.Variable(tf.random_normal([12, 6, 1, 16])),
     # 8x12 conv, 16 inputs, 24 outputs
-    'wconv2': tf.Variable(tf.random_normal([8, 12, 16, 24])),
+    'wconv2': tf.Variable(tf.random_normal([8, 3, 16, 24])),
     # 5x7 conv, 24 inputs, 32 outputs
-    'wconv3': tf.Variable(tf.random_normal([5, 7, 24, 32])),
-    # fully connected, 7*7*64 inputs, 1024 outputs
-    'wfc1': tf.Variable(tf.random_normal([60820, 128])),#TODO vector size tbd, the number should be conv3 + x1
+    'wconv3': tf.Variable(tf.random_normal([5, 2, 24, 32])),
     # 1024 inputs, 10 outputs (class prediction)
     'classify': tf.Variable(tf.random_normal([2*num_hidden, num_classes]))
 }
@@ -49,7 +47,6 @@ biases = {
     'bconv1': tf.Variable(tf.random_normal([16])),
     'bconv2': tf.Variable(tf.random_normal([24])),
     'bconv3': tf.Variable(tf.random_normal([32])),
-    'bfc1': tf.Variable(tf.random_normal([128])),
     'classify': tf.Variable(tf.random_normal([num_classes]))
 }
 
@@ -64,12 +61,13 @@ def maxpool2d(x, k=2):
 def convNet(x, x1):
     # Tensor input become 4-D: [Batch Size, Height, Width, Channel]
     x = tf.reshape(x, shape=[-1, input_x, input_y, input_z])
-    x1 = tf.reshape(x1, shape=[-1, input_1])
     # Convolution Layer
+    #print('x_shape:', x)
+    print('x1_shape:', x1)
     conv1 = conv2d(x, weights['wconv1'], biases['bconv1'])
     conv1 = maxpool2d(conv1, k=2)
 
-    print('conv1_shape:', tf.shape(conv1))
+    #print('conv1_shape:', tf.shape(conv1))
 
     conv2 = conv2d(conv1, weights['wconv2'], biases['bconv2'])
     conv2 = maxpool2d(conv2, k=2)
@@ -79,20 +77,23 @@ def convNet(x, x1):
 
     # Fully connected layer
     # Reshape conv2 output to fit fully connected layer input
-    conv3 = tf.reshape(conv3, [-1, 50 * 38 * 32])
-    conv3 = tf.concat([conv3, x1], 1)
+    print('conv3_shape:', conv3)
+    conv3 = tf.reshape(conv3, shape=[batch_size, timesteps, -1])
+    print('conv3_shape:', conv3)
+    conv3 = tf.concat(2, [conv3, x1])
+    print('concatenated_conv3_shape:', conv3)
 
-    fc1 = tf.add(tf.matmul(conv3, weights['wfc1']), biases['bfc1'])
-    fc1 = tf.nn.relu(fc1)
+    #fc1 = tf.add(tf.matmul(conv3, weights['wfc1']), biases['bfc1'])
+    #fc1 = tf.nn.relu(fc1)
     # Apply Dropout
-    fc1 = tf.nn.dropout(fc1, dropout_rate)
+    #fc1 = tf.nn.dropout(fc1, dropout_rate)
 
-    return fc1
+    return conv3
 
 
 def BiRNN(x):
-    x = tf.reshape(x, [batch_size, timesteps, -1])
-    x = tf.unstack(x, timesteps, 1)
+    x = tf.unpack(x, timesteps, 1)
+    #print('unpacked_lstm_input_shape:', x)
     # Define lstm cells with tensorflow
     # Forward direction cell
     lstm_fw_cell = rnn.BasicLSTMCell(num_hidden, forget_bias=1.0)
@@ -130,7 +131,7 @@ with tf.Session() as sess:
 
     for epoch_num in range(1, training_epoch + 1):
         for step in range(1, training_steps + 1):
-            batch_x, batch_x_1, batch_y = dataset.next_train_batch()
+            batch_x, batch_x_1, batch_y = dataset.next_batch(is_train = True)
             #print(batch_x, batch_x_1, batch_y)
             #print(batch_x_1.shape)
             sess.run(train_op, feed_dict={X: batch_x, X_1: batch_x_1, Y: batch_y})

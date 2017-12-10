@@ -92,17 +92,24 @@ class DatasetTool(object):
                     temp = row[30 : 33]
                     temp.append(row[36])
                     feature_rows.append(temp)
+
                 #3*297 lines, parse matrix
                 for i in range(3):
-                    mel_mat = np.array(logMel_rows[i * 297 + 1: (i + 1) * 297])
-                    feature_mat = np.array(feature_rows[i * 297 + 1: (i + 1) * 297])
-                    logMel.append(mel_mat)
+                    mel_mat = np.array(logMel_rows[i * 297 + 1: (i + 1) * 297]).astype(np.float32)
+                    feature_mat = np.array(feature_rows[i * 297 + 1: (i + 1) * 297]).astype(np.float32)
+                    #print('before:\n', feature_mat)
+                    #reduce mean, every 8 frames
+                    feature_mat = np.reshape(feature_mat, (37, 8, 4))
+                    #print('reshaped!:\n', feature_mat)
+                    feature_mat = np.mean(feature_mat, axis = 1)
+                    #print('mean!:\n', feature_mat)
+                    logMel.append(np.log(mel_mat))
                     features.append(feature_mat)
 
         return np.array(logMel), np.array(features), np.array(ground_truth)
 
 if __name__ == '__main__':
-    dataset = DatasetTool('/scratch/user/liqingqing/info_concatenated', 6, 296)
+    dataset = DatasetTool('/scratch/user/liqingqing/info_concatenated', 3, 296)
     dataset.show_stat_info()
     batch_mel, batch_feature, batch_truth = dataset.next_batch(is_train = True)
     print('batch_mel_shape:', batch_mel.shape)
