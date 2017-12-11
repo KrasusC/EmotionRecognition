@@ -176,8 +176,8 @@ outputs = convNN(X, X_1)
 lstm_output = BiRNN(outputs)
 attention_para = AttentionNN(lstm_output)
 logits = ClassifyNN(lstm_output, attention_para)
-#prediction = tf.nn.softmax(logits)
-prediction = tf.div(logits, tf.reshape(tf.reduce_sum(logits, 1), shape=[batch_size, 1]))
+prediction = tf.nn.softmax(logits)
+#prediction = tf.div(logits, tf.reshape(tf.reduce_sum(logits, 1), shape=[batch_size, 1]))
 
 # Define loss and optimizer
 loss_op = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=Y))
