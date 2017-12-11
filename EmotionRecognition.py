@@ -40,6 +40,7 @@ weights = {
     #attention_cnn
     #only one-dimmensional conv
     'attwconv1': tf.Variable(tf.random_normal([5, 256, 5])),
+    'microsoft_attwconv1': tf.Variable(tf.random_normal([256,1])),
     #fc
     'attwfc1': tf.Variable(tf.random_normal([40, 37])),
     'attwfc2': tf.Variable(tf.random_normal([37, 37])),
@@ -56,6 +57,8 @@ biases = {
     'bconv2': tf.Variable(tf.random_normal([24])),
     'bconv3': tf.Variable(tf.random_normal([32])),
     'attbconv1': tf.Variable(tf.random_normal([5])),
+    'microsoft_attbconv1': tf.Variable(tf.random_normal([5])),
+
     'attbfc1':   tf.Variable(tf.random_normal([37])),
     'attbfc2':   tf.Variable(tf.random_normal([37])),
     'cbfc1':   tf.Variable(tf.random_normal([128])),
@@ -123,20 +126,29 @@ def BiRNN(x):
 
 #generate [batch_size, timesteps] weights
 def AttentionNN(x):
-    conv1 = conv1d(x, weights['attwconv1'], biases['attbconv1'])
 
-    print('att_conv1_shape:', conv1)
-    conv1 = tf.reshape(conv1, shape=[batch_size, -1])
+    ##---------version 1
+    # conv1 = conv1d(x, weights['attwconv1'], biases['attbconv1'])
+    #
+    # print('att_conv1_shape:', conv1)
+    # conv1 = tf.reshape(conv1, shape=[batch_size, -1])
+    #
+    # fc1 = tf.add(tf.matmul(conv1, weights['attwfc1']), biases['attbfc1'])
+    # fc1 = tf.nn.relu(fc1)
+    # fc1 = tf.nn.dropout(fc1, dropout_rate)
+    #
+    # fc2 = tf.add(tf.matmul(fc1, weights['attwfc2']), biases['attbfc2'])
+    # fc2 = tf.nn.relu(fc2)
+    # fc2 = tf.nn.dropout(fc2, dropout_rate)
 
-    fc1 = tf.add(tf.matmul(conv1, weights['attwfc1']), biases['attbfc1'])
-    fc1 = tf.nn.relu(fc1)
-    fc1 = tf.nn.dropout(fc1, dropout_rate)
-
-    fc2 = tf.add(tf.matmul(fc1, weights['attwfc2']), biases['attbfc2'])
-    fc2 = tf.nn.relu(fc2)
-    fc2 = tf.nn.dropout(fc2, dropout_rate)
-
-    return fc2
+    #---------version 2
+    #conv1 = conv1d(x,weights['microsoft_attwconv1'],biases['microsoft_attbconv1']) # I hope the output is just 37 numbers
+    #x = tf.unstack(x, timesteps, 1)
+    x = tf.reshape(x, shape=[-1, 256])
+    x = tf.matmul(x, weights['microsoft_attwconv1'])
+    x = tf.reshape(x, shape=[batch_size, -1])
+    attnweights = tf.nn.softmax(x) # I hope the output is just 37 numbers
+    return attnweights
 
 def ClassifyNN(x, a):
     #add the [1] dimmension for broadcasting
@@ -144,7 +156,7 @@ def ClassifyNN(x, a):
     x = tf.multiply(x, a)
 
     print('class_x_shape:', x)
-    x = tf.reduce_mean(x, 1)
+    x = tf.reduce_sum(x, 1)
     print('class_x_mean_shape:', x)
 
     fc1 = tf.add(tf.matmul(x, weights['cwfc1']), biases['cbfc1'])
@@ -156,8 +168,6 @@ def ClassifyNN(x, a):
     fc2 = tf.nn.dropout(fc2, dropout_rate)
 
     fc3 = tf.add(tf.matmul(fc2, weights['cwfc3']), biases['cbfc3'])
-    fc3 = tf.nn.relu(fc3)
-    fc3 = tf.nn.dropout(fc3, dropout_rate)
 
     return fc3
 
