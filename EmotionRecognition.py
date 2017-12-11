@@ -6,10 +6,10 @@ from DatasetTool import DatasetTool
 
 # Training Parameters
 learning_rate = 0.001
-training_epoch = 100
+training_epoch = 200
 batch_size = 24 # batch_size must be multiples of 3
 display_step = 50
-dataset_config_file_path = '/scratch/user/liqingqing/info_concatenated'
+dataset_config_file_path = '/scratch/user/liqingqing/info_concatenated_with_two_SNR'
 dropout_rate = 0.2
 
 # Network Parameters
