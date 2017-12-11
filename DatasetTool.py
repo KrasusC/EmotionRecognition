@@ -116,8 +116,12 @@ class DatasetTool(object):
         return np.array(logMel), np.array(features), np.array(ground_truth)
 
 if __name__ == '__main__':
-    dataset = DatasetTool('/scratch/user/liqingqing/info_concatenated', 30, 296)
+    dataset = DatasetTool('/scratch/user/liqingqing/info_concatenated_with_two_SNR', 24, 296)
     dataset.show_stat_info()
+    for i in range(1800):
+        batch_mel, batch_feature, batch_truth = dataset.next_batch(is_train = True)
+    for i in range(450):
+        batch_mel, batch_feature, batch_truth = dataset.next_batch(is_train = False)
     batch_mel, batch_feature, batch_truth = dataset.next_batch(is_train = True)
     print('batch_mel_shape:', batch_mel.shape)
     print('batch_feature_shape', batch_feature.shape)
